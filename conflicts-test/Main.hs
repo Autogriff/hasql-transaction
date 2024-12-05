@@ -47,9 +47,9 @@ session connection session =
   B.run session connection
     >>= either (fail . show) return
 
-transaction :: A.Connection -> C.Transaction a -> IO a
+transaction :: A.Connection -> C.Transaction error a -> IO a
 transaction connection transaction =
-  session connection (G.transaction G.RepeatableRead G.Write transaction)
+  session connection ((\(Right a) -> a) <$> G.transaction G.RepeatableRead G.Write transaction)
 
 type Test =
   A.Connection -> A.Connection -> IO Bool

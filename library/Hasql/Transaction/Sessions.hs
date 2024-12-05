@@ -9,6 +9,7 @@ module Hasql.Transaction.Sessions
 where
 
 import Data.Bool
+import Data.Either
 import Hasql.Session qualified as B
 import Hasql.Transaction.Config qualified as C
 import Hasql.Transaction.Private.Transaction qualified as A
@@ -16,7 +17,7 @@ import Hasql.Transaction.Private.Transaction qualified as A
 -- |
 -- Execute the transaction using the provided isolation level and mode.
 {-# INLINE transaction #-}
-transaction :: C.IsolationLevel -> C.Mode -> A.Transaction a -> B.Session a
+transaction :: C.IsolationLevel -> C.Mode -> A.Transaction e a -> B.Session (Either e a)
 transaction isolation mode transaction =
   A.run transaction isolation mode True
 
@@ -26,6 +27,6 @@ transaction isolation mode transaction =
 --
 -- Helps with transaction pooling due to its incompatibility with prepared statements.
 {-# INLINE unpreparedTransaction #-}
-unpreparedTransaction :: C.IsolationLevel -> C.Mode -> A.Transaction a -> B.Session a
+unpreparedTransaction :: C.IsolationLevel -> C.Mode -> A.Transaction e a -> B.Session (Either e a)
 unpreparedTransaction isolation mode transaction =
   A.run transaction isolation mode False

@@ -12,42 +12,42 @@ import Hasql.Transaction.Private.Sessions qualified as D
 -- Executes multiple queries under the specified mode and isolation level,
 -- while automatically retrying the transaction in case of conflicts.
 -- Thus this abstraction closely reproduces the behaviour of 'STM'.
-newtype Transaction a
-  = Transaction (StateT Bool B.Session a)
+newtype Transaction error a
+  = Transaction (StateT (Maybe error) B.Session a)
   deriving (Functor, Applicative, Monad)
 
-instance (Semigroup a) => Semigroup (Transaction a) where
+instance (Semigroup a) => Semigroup (Transaction error a) where
   (<>) = liftA2 (<>)
 
-instance (Monoid a) => Monoid (Transaction a) where
+instance (Monoid a) => Monoid (Transaction error a) where
   mempty = pure mempty
 
 -- |
 -- Execute the transaction using the provided isolation level and mode.
 {-# INLINE run #-}
-run :: Transaction a -> IsolationLevel -> Mode -> Bool -> B.Session a
+run :: Transaction error a -> IsolationLevel -> Mode -> Bool -> B.Session (Either error a)
 run (Transaction session) isolation mode preparable =
-  D.inRetryingTransaction isolation mode (runStateT session True) preparable
+  D.inRetryingTransaction isolation mode (runStateT session Nothing) preparable
 
 -- |
 -- Possibly a multi-statement query,
 -- which however cannot be parameterized or prepared,
 -- nor can any results of it be collected.
 {-# INLINE sql #-}
-sql :: ByteString -> Transaction ()
+sql :: ByteString -> Transaction error ()
 sql =
   Transaction . lift . B.sql
 
 -- |
 -- Parameters and a specification of the parametric query to apply them to.
 {-# INLINE statement #-}
-statement :: a -> A.Statement a b -> Transaction b
+statement :: a -> A.Statement a b -> Transaction error b
 statement params statement =
   Transaction . lift $ B.statement params statement
 
 -- |
 -- Cause transaction to eventually roll back.
 {-# INLINE condemn #-}
-condemn :: Transaction ()
-condemn =
-  Transaction $ put False
+condemn :: error -> Transaction error ()
+condemn err =
+  Transaction $ put $ Just err

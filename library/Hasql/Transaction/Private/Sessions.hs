@@ -6,19 +6,19 @@ import Hasql.Transaction.Private.Prelude
 import Hasql.Transaction.Private.Statements qualified as Statements
 
 {-
-We may want to
-do one transaction retry in case of the 23505 error, and fail if an identical
+We may want to do one transaction retry in case of the 23505 error, and fail if an identical
 error is seen.
 -}
-inRetryingTransaction :: IsolationLevel -> Mode -> Session (a, Bool) -> Bool -> Session a
+inRetryingTransaction :: IsolationLevel -> Mode -> Session (a, Maybe e) -> Bool -> Session (Either e a)
 inRetryingTransaction level mode session preparable =
   fix $ \retry -> do
     attemptRes <- tryTransaction level mode session preparable
     case attemptRes of
-      Just a -> return a
-      Nothing -> retry
+      Just (Right a) -> return $ Right a  -- Transaction succeeded
+      Just (Left e) -> return $ Left e    -- User error occurred
+      Nothing -> retry                    -- Retryable transaction error occurred
 
-tryTransaction :: IsolationLevel -> Mode -> Session (a, Bool) -> Bool -> Session (Maybe a)
+tryTransaction :: IsolationLevel -> Mode -> Session (a, Maybe e) -> Bool -> Session (Maybe (Either e a))
 tryTransaction level mode body preparable = do
   statement () (Statements.beginTransaction level mode preparable)
 
@@ -27,15 +27,15 @@ tryTransaction level mode body preparable = do
     handleTransactionError error $ return Nothing
 
   case bodyRes of
-    Just (res, commit) -> catchError (commitOrAbort commit preparable $> Just res) $ \error -> do
+    Just (val, maybeErr) -> catchError (commitOrAbort maybeErr preparable $> Just (maybe (Right val) Left maybeErr)) $ \error -> do
       handleTransactionError error $ return Nothing
     Nothing -> return Nothing
 
-commitOrAbort :: Bool -> Bool -> Session ()
-commitOrAbort commit preparable =
-  if commit
-    then statement () (Statements.commitTransaction preparable)
-    else statement () (Statements.abortTransaction preparable)
+commitOrAbort :: Maybe e -> Bool -> Session ()
+commitOrAbort maybeErr preparable =
+  case maybeErr of
+    Nothing -> statement () (Statements.commitTransaction preparable)
+    Just _ -> statement () (Statements.abortTransaction preparable)
 
 handleTransactionError :: SessionError -> Session a -> Session a
 handleTransactionError error onTransactionError = case error of
